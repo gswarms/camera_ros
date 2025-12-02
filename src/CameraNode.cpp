@@ -74,7 +74,8 @@ class CameraNode : public rclcpp::Node
 {
 public:
   explicit CameraNode(const rclcpp::NodeOptions &options);
-
+  float libcamera_server_start_time = 0.0f;
+  float image_receive_time = 0.0f;
   ~CameraNode();
 
 private:
@@ -569,6 +570,10 @@ CameraNode::CameraNode(const rclcpp::NodeOptions &options)
   // register callback
   camera->requestCompleted.connect(this, &CameraNode::requestComplete);
 
+  libcamera_server_start_time =
+    std::chrono::duration<float>(
+      std::chrono::steady_clock::now().time_since_epoch()).count();
+
   // start camera with initial controls
   if (camera->start(&parameter_handler.get_control_values()))
     throw std::runtime_error("failed to start camera");
@@ -629,10 +634,30 @@ CameraNode::process(libcamera::Request *const request)
     if (request->status() == libcamera::Request::RequestComplete) {
       assert(request->buffers().size() == 1);
 
+    double current_time_msec =
+      std::chrono::duration<double, std::milli>(
+          std::chrono::system_clock::now().time_since_epoch()
+      ).count();
+
       // get the stream and buffer from the request
       const libcamera::FrameBuffer *buffer = request->findBuffer(stream);
       const libcamera::FrameMetadata &metadata = buffer->metadata();
       size_t bytesused = 0;
+
+      const libcamera::ControlList &ctrl_metadata = request->metadata();
+      
+      // FrameWallClock is an int64 timestamp from libcamera
+      if (const std::optional<int64_t> wall =
+              ctrl_metadata.get(libcamera::controls::FrameWallClock)) {
+        int64_t wall_ns = *wall;
+
+        double wall_msec = static_cast<double>(wall_ns) * 1e-6;
+        double diff = current_time_msec - wall_msec; // current_time is in seconds, so convert to ms
+      } else {
+        RCLCPP_DEBUG(get_logger(), "FrameWallClock not available in metadata");
+      }
+
+
       for (const libcamera::FrameMetadata::Plane &plane : metadata.planes())
         bytesused += plane.bytesused;
 

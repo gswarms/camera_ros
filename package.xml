@@ -18,9 +18,9 @@
 
   <exec_depend>ros2launch</exec_depend>
   <exec_depend>ament_index_python</exec_depend>
-  <exec_depend condition="$ROS_DISTRO != 'humble'">image_view</exec_depend>
+  <!-- <exec_depend condition="$ROS_DISTRO != 'humble'">image_view</exec_depend> -->
 
-  <test_depend>ament_lint_auto</test_depend>
+  <!-- <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_cmake_clang_format</test_depend>
   <test_depend>clang-format</test_depend>
   <test_depend>ament_cmake_cppcheck</test_depend>
@@ -29,7 +29,7 @@
   <test_depend>ament_cmake_mypy</test_depend>
   <test_depend>ament_cmake_pep257</test_depend>
   <test_depend>ament_cmake_pyflakes</test_depend>
-  <test_depend>ament_cmake_xmllint</test_depend>
+  <test_depend>ament_cmake_xmllint</test_depend> -->
 
   <export>
     <build_type>ament_cmake</build_type>

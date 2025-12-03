@@ -62,6 +62,8 @@
 #include <utility>
 #include <vector>
 
+#define FRAMERATE 20
+
 namespace rclcpp
 {
 class NodeOptions;
@@ -75,7 +77,7 @@ class CameraNode : public rclcpp::Node
 public:
   explicit CameraNode(const rclcpp::NodeOptions &options);
   float libcamera_server_start_time = 0.0f;
-  float image_receive_time = 0.0f;
+  int image_count_ = 0;
   ~CameraNode();
 
 private:
@@ -570,9 +572,7 @@ CameraNode::CameraNode(const rclcpp::NodeOptions &options)
   // register callback
   camera->requestCompleted.connect(this, &CameraNode::requestComplete);
 
-  libcamera_server_start_time =
-    std::chrono::duration<float>(
-      std::chrono::steady_clock::now().time_since_epoch()).count();
+  libcamera_server_start_time = this->now();
 
   // start camera with initial controls
   if (camera->start(&parameter_handler.get_control_values()))
@@ -634,36 +634,26 @@ CameraNode::process(libcamera::Request *const request)
     if (request->status() == libcamera::Request::RequestComplete) {
       assert(request->buffers().size() == 1);
 
-    double current_time_msec =
-      std::chrono::duration<double, std::milli>(
-          std::chrono::system_clock::now().time_since_epoch()
-      ).count();
+      rclcpp::Time current_time = this->now();
+      float time_diff = (current_time - libcamera_server_start_time).seconds();
+      // round to the camera FPS
+      int frame_idx = (int) (time_diff * (float)FRAMERATE);
+      float tmp_time = (float)frame_idx / (float)FRAMERATE;
+      int time_s = (int) tmp_time;
+      int time_ns = (int) ((tmp_time - (float)time_s) * 1e9);
+      rclcpp::Time timestamp = rclcpp::Duration(time_s, time_ns) + libcamera_server_start_time;
 
       // get the stream and buffer from the request
       const libcamera::FrameBuffer *buffer = request->findBuffer(stream);
       const libcamera::FrameMetadata &metadata = buffer->metadata();
       size_t bytesused = 0;
 
-      const libcamera::ControlList &ctrl_metadata = request->metadata();
-      
-      // FrameWallClock is an int64 timestamp from libcamera
-      if (const std::optional<int64_t> wall =
-              ctrl_metadata.get(libcamera::controls::FrameWallClock)) {
-        int64_t wall_ns = *wall;
-
-        double wall_msec = static_cast<double>(wall_ns) * 1e-6;
-        double diff = current_time_msec - wall_msec; // current_time is in seconds, so convert to ms
-      } else {
-        RCLCPP_DEBUG(get_logger(), "FrameWallClock not available in metadata");
-      }
-
-
       for (const libcamera::FrameMetadata::Plane &plane : metadata.planes())
         bytesused += plane.bytesused;
 
       // prepare message header
       std_msgs::msg::Header hdr;
-      hdr.frame_id = frame_id;
+      hdr.frame_id = std::to_string(image_count_++);;
 
       // if using sensor timestamps, get the sensor timestamp from the request metadata
       int64_t sensor_latency = 0;
@@ -678,7 +668,7 @@ CameraNode::process(libcamera::Request *const request)
       }
 
       // Adjust timestamp by the sensor latency
-      hdr.stamp = this->now() - rclcpp::Duration::from_nanoseconds(sensor_latency);
+      hdr.stamp = timestamp
 
       // prepare image messages
       const libcamera::StreamConfiguration &cfg = stream->configuration();
@@ -728,6 +718,11 @@ CameraNode::process(libcamera::Request *const request)
 
       pub_image->publish(std::move(msg_img));
       pub_image_compressed->publish(std::move(msg_img_compressed));
+
+      if (image_count_ > 100000){
+        image_count_ = 0;
+      }
+
 
       sensor_msgs::msg::CameraInfo ci = cim.getCameraInfo();
       ci.header = hdr;

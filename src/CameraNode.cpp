@@ -54,6 +54,7 @@
 #include <sensor_msgs/msg/compressed_image.hpp>
 #include <sensor_msgs/msg/image.hpp>
 #include <std_msgs/msg/header.hpp>
+#include <std_msgs/msg/float64.hpp>
 #include <stdexcept>
 #include <string>
 #include <sys/mman.h>
@@ -102,6 +103,7 @@ private:
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr pub_image;
   rclcpp::Publisher<sensor_msgs::msg::CompressedImage>::SharedPtr pub_image_compressed;
   rclcpp::Publisher<sensor_msgs::msg::CameraInfo>::SharedPtr pub_ci;
+  rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr pub_sensor_latency;
 
   camera_info_manager::CameraInfoManager cim;
 
@@ -331,6 +333,7 @@ CameraNode::CameraNode(const rclcpp::NodeOptions &options)
   pub_image_compressed =
     this->create_publisher<sensor_msgs::msg::CompressedImage>("~/image_raw/compressed", 1);
   pub_ci = this->create_publisher<sensor_msgs::msg::CameraInfo>("~/camera_info", 1);
+  pub_sensor_latency = this->create_publisher<std_msgs::msg::Float64>("~/sensor_latency", 1);
 
   // start camera manager and check for cameras
   camera_manager.start();
@@ -651,6 +654,9 @@ CameraNode::process(libcamera::Request *const request)
         const libcamera::ControlList &req_metadata = request->metadata();
         if (const std::optional<int64_t> sensor_ts = req_metadata.get(libcamera::controls::SensorTimestamp)) {
           sensor_latency = rclcpp::Clock(RCL_STEADY_TIME).now().nanoseconds() - sensor_ts.value();
+          auto sensor_latency_msg = std::make_unique<std_msgs::msg::Float64>();
+          sensor_latency_msg->data = static_cast<double>(sensor_latency) * 1e-6; // convert to milliseconds
+          pub_sensor_latency->publish(std::move(sensor_latency_msg));
         }
         else {
           RCLCPP_WARN_STREAM_ONCE(get_logger(), "sensor timestamp not available, falling back to node time as reference");

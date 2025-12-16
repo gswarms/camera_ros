@@ -494,6 +494,14 @@ CameraNode::CameraNode(const rclcpp::NodeOptions &options)
     break;
   }
 
+  const auto &pf = scfg.pixelFormat;
+  RCLCPP_INFO_STREAM(
+    get_logger(),
+    "Selected pixelFormat=" << pf.toString()
+      << " fourcc=0x" << std::hex << pf.fourcc() << std::dec
+      << " ros_encoding=\"" << get_ros_encoding(pf) << "\""
+  );
+
   // format camera name for calibration file
   const libcamera::ControlList &props = camera->properties();
   std::string cname = camera->id() + '_' + scfg.size.toString();

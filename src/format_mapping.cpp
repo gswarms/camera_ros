@@ -28,8 +28,8 @@ static const std::unordered_map<uint32_t, std::string> map_format_raw = {
 #if LIBCAMERA_VER_GE(0, 3, 0)
   {cam::R16.fourcc(), ros::MONO16},
 #endif
-  {cam::RGB888.fourcc(), ros::RGB8},
-  {cam::BGR888.fourcc(), ros::BGR8},
+  {cam::RGB888.fourcc(), ros::BGR8},
+  {cam::BGR888.fourcc(), ros::RGB8},
 #if LIBCAMERA_VER_GE(0, 3, 0)
   {cam::RGB161616.fourcc(), ros::RGB16},
   {cam::BGR161616.fourcc(), ros::BGR16},

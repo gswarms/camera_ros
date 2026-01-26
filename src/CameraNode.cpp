@@ -682,15 +682,32 @@ CameraNode::process(libcamera::Request *const request)
 
       if (format_type(cfg.pixelFormat) == FormatType::RAW) {
         // raw uncompressed image
-        assert(buffer_info[buffer].size == bytesused);
+        // Validate buffer size - warn if bytesused differs from allocated size
+        if (bytesused > buffer_info[buffer].size) {
+          RCLCPP_ERROR_STREAM(get_logger(), "bytesused (" << bytesused 
+            << ") exceeds allocated buffer size (" << buffer_info[buffer].size 
+            << "), skipping frame");
+          // queue the request again and continue to next iteration
+          request->reuse(libcamera::Request::ReuseBuffers);
+          parameter_handler.move_control_values(request->controls());
+          camera->queueRequest(request);
+          continue;
+        }
+        if (bytesused < buffer_info[buffer].size) {
+          RCLCPP_WARN_STREAM(get_logger(), "bytesused (" << bytesused 
+            << ") is less than allocated buffer size (" << buffer_info[buffer].size 
+            << "), this may indicate incomplete frame data from camera");
+        }
+        
         msg_img->header = hdr;
         msg_img->width = cfg.size.width;
         msg_img->height = cfg.size.height;
         msg_img->step = cfg.stride;
         msg_img->encoding = get_ros_encoding(cfg.pixelFormat);
         msg_img->is_bigendian = (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__);
-        msg_img->data.resize(buffer_info[buffer].size);
-        memcpy(msg_img->data.data(), buffer_info[buffer].data, buffer_info[buffer].size);
+        // Use the actual bytes used instead of full buffer size
+        msg_img->data.resize(bytesused);
+        memcpy(msg_img->data.data(), buffer_info[buffer].data, bytesused);
 
         // compress to jpeg
         if (pub_image_compressed->get_subscription_count()) {
@@ -705,7 +722,18 @@ CameraNode::process(libcamera::Request *const request)
       }
       else if (format_type(cfg.pixelFormat) == FormatType::COMPRESSED) {
         // compressed image
-        assert(bytesused < buffer_info[buffer].size);
+        // Validate that bytesused is within buffer bounds
+        if (bytesused > buffer_info[buffer].size) {
+          RCLCPP_ERROR_STREAM(get_logger(), "bytesused (" << bytesused 
+            << ") exceeds allocated buffer size (" << buffer_info[buffer].size 
+            << "), skipping frame");
+          // queue the request again and continue to next iteration
+          request->reuse(libcamera::Request::ReuseBuffers);
+          parameter_handler.move_control_values(request->controls());
+          camera->queueRequest(request);
+          continue;
+        }
+        
         msg_img_compressed->header = hdr;
         msg_img_compressed->format = get_ros_encoding(cfg.pixelFormat);
         msg_img_compressed->data.resize(bytesused);
